@@ -3,7 +3,7 @@ title: "Demographics & the American Nations"
 subtitle: "An analysis of the social, cultural, and population factors in the 2016 presidential election outcome"
 author: "Darren McNally"
 date: "11/19/2017"
-output: html_document
+output: pdf_document
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, tidy = TRUE)
