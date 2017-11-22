@@ -3,7 +3,7 @@ title: "Demographics & the American Nations"
 subtitle: "An analysis of the social, cultural, and population factors in the 2016 presidential election outcome"
 author: "Darren McNally"
 date: "11/19/2017"
-output: pdf_document
+output: html_document
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, tidy = TRUE)
@@ -17,7 +17,7 @@ This report attempts to address:
 2. Do the regions in the American Nations framework described by Colin Woodward have different election outcomes in 2016? If so, are these differences due to more than demographic differences in each region?
 
 Election outcome was considered based on the proportion of the vote to Trump or Clinton. The demographic factors evaluated were race, educational attainment, self-identified ancestry, urban/rural population, and religious adherence. All of this data was evaluated at the county level, with each county weighted by the number of eligible voters.
-I was able to construct a simple demographic linear model with an Adjusted R^2^ value of 0.773. When accounting for interactions between variables to form a more complex demographic model the Adjusted R^2^ value was 0.772. Adding in the framework of the American Nations significantly improved the models with Adjusted R^2^ values of 0.829 and 0.828 respectively. The 2016 presidential election results for a given county can be well explained by demographic factors and the American Nations framework is highly valuable in explaining the results, beyond mere demographic variables.
+I was able to construct a simple demographic linear model with an Adjusted R^2^ value of 0.768. When accounting for interactions between variables to form a more complex demographic model the Adjusted R^2^ value was 0.772. Adding in the framework of the American Nations significantly improved the models with Adjusted R^2^ values of 0.816 and 0.828 respectively. The 2016 presidential election results for a given county can be well explained by demographic factors and the American Nations framework is highly valuable in explaining the results, beyond mere demographic variables.
 
 ## Analysis
 All of the data used for analysis came from the most recently collected information that includes every county. Alaska is not included in modeling because the state does not report election results to the county - or equivalent - level. This analysis utilizes the following sources:
