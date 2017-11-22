@@ -1,0 +1,197 @@
+---
+title: "Demographics & the American Nations"
+subtitle: "An analysis of the social, cultural, and population factors in the 2016 presidential election outcome"
+author: "Darren McNally"
+date: "11/19/2017"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy = TRUE)
+```
+_\center Source data and R markdown files can be found at https://github.com/Opossumist/demographics-american-nations \center_
+
+## Summary
+This report attempts to address:
+
+1. How strong is the relationship between demographic factors and the 2016 presidential election outcome?
+2. Do the regions in the American Nations framework described by Colin Woodward have different election outcomes in 2016? If so, are these differences due to more than demographic differences in each region?
+
+Election outcome was considered based on the proportion of the vote to Trump or Clinton. The demographic factors evaluated were race, educational attainment, self-identified ancestry, urban/rural population, and religious adherence. All of this data was evaluated at the county level, with each county weighted by the number of eligible voters.
+I was able to construct a simple demographic linear model with an Adjusted R^2^ value of 0.773. When accounting for interactions between variables to form a more complex demographic model the Adjusted R^2^ value was 0.772. Adding in the framework of the American Nations significantly improved the models with Adjusted R^2^ values of 0.829 and 0.828 respectively. The 2016 presidential election results for a given county can be well explained by demographic factors and the American Nations framework is highly valuable in explaining the results, beyond mere demographic variables.
+
+## Analysis
+All of the data used for analysis came from the most recently collected information that includes every county. Alaska is not included in modeling because the state does not report election results to the county - or equivalent - level. This analysis utilizes the following sources:
+
+* 2015 5-year American Community Survey by the U.S. Census Bureau for population and citizenship, educational attainment, and self-identified ancestry.
+* 2010 Census by the U.S. Census Bureau for urban/rural population.
+* 2010 U.S. Religion Census by Association of Statisticians of American Religious Bodies for adherents of different faiths.
+
+This report was built in R `r getRversion()` using the ```dplyr``` , ```knitr```, and ```magrittr``` libraries. 
+```{r echo=FALSE, message=FALSE}
+library(dplyr)
+library(knitr)
+library(magrittr)
+```
+#### Election Results
+Reading in the election results for each county and beginning to construct a data frame with all of the variables to fit in the model. These results come from [Dave Leip's Atlas of U.S. Presidential Elections](http://uselectionatlas.org/).[^*] The results for Trump and Clinton are turned into percentages to account for the proportion of the vote that went to each candidate.
+
+[^*]: The source file is copyrighted and requires purchase so it is not included with the other source files.
+```{r election}
+pres2016 <- readLines('2016_0_0_2.csv')
+pres2016 <- read.csv(textConnection(pres2016[-1]), stringsAsFactors = F)
+df <- pres2016[,c(1,2,4,5,6)]
+df$trump <- df$vote2*100/df$totalvote
+df$clinton <- df$vote1*100/df$totalvote
+```
+
+#### Citizens of Voting Age Population (CVAP)
+CVAP represents all of the individuals in a county eligible to vote. This was further broken into the percent that is white and the percent that is Black. This data was meant to test the assertions that voting patterns are becoming more divided along racial lines. The total CVAP of each county is used to weight the county in the models in order to account for the effects on turnout as well as overall population.
+```{r cvap}
+cvap <- read.csv("./ACS_15_5YR_B05001/ACS_15_5YR_B05001.csv", stringsAsFactors = F)
+cvap$tot.cvap <- cvap$HD01_VD01
+```
+
+CVAP specific to the white population.
+```{r cvap white}
+cvap.w <- read.csv("./ACS_15_5YR_B05003H/ACS_15_5YR_B05003H.csv", stringsAsFactors = F)
+cvap.w$tot.cvap.white <- cvap.w$HD01_VD09+cvap.w$HD01_VD11+cvap.w$HD01_VD20+cvap.w$HD01_VD22
+cvap.w$pct.cvap.white <- cvap.w$tot.cvap.white*100/cvap$tot.cvap
+```
+
+CVAP specific to the Black population.
+```{r cvap black}
+cvap.b <- read.csv("./ACS_15_5YR_B05003B/ACS_15_5YR_B05003B.csv", stringsAsFactors = F)
+cvap.b$tot.cvap.black <- cvap.b$HD01_VD09+cvap.b$HD01_VD11+cvap.b$HD01_VD20+cvap.b$HD01_VD22
+cvap.b$pct.cvap.black <- cvap.b$tot.cvap.black*100/cvap$tot.cvap
+```
+
+All CVAP data assembled into one frame and added to the analysis data frame.
+```{r cvap combine}
+df <- merge(df, data.frame(fips=cvap$GEO.id2,
+                           tot.cvap=cvap$tot.cvap,
+                           pct.cvap.white=cvap.w$pct.cvap.white,
+                           pct.cvap.black=cvap.b$pct.cvap.black), by='fips')
+```
+
+#### Educational Attainment
+This data is meant to test the statements and exit poll data that there was more support for  Trump among less educated, primarily white voters.
+```{r education all}
+edu <- read.csv('./ACS_15_5YR_B15003/ACS_15_5YR_B15003.csv', stringsAsFactors = F)
+edu$pct.tot.nocollege <- (edu$HD01_VD17+edu$HD01_VD18)*100/edu$HD01_VD01
+edu$pct.tot.bachplus <- (edu$HD01_VD22+edu$HD01_VD23+edu$HD01_VD24+edu$HD01_VD25)*100/edu$HD01_VD01
+df <- merge(df, edu[,c('GEO.id2','pct.tot.nocollege','pct.tot.bachplus')], by.x = 'fips', by.y = 'GEO.id2')
+```
+
+#### "American" Ancestry
+Multiple sources have noted that Trump saw significant support in both the primary and general elections in areas where many in the population reported their ancestry as "American". Colin Woodward has also noted in the American Nations framework that the distribution of this population is heavily concentrated in certain regions.
+```{r american}
+american <- read.csv('./ACS_15_5YR_B04006/ACS_15_5YR_B04006.csv', stringsAsFactors = F)
+american$pct.american <- american$HD01_VD05*100/american$HD01_VD01
+df <- merge(df, american[,c('GEO.id2', 'pct.american')], by.x = 'fips', by.y = 'GEO.id2')
+```
+
+#### Religion
+Religion data is included to test two observations from the 2016 election. Trump seemed to see significant enthusiasm and support with Evangelical Christians. Mormons also seemed to defect from their traditional support of the Republican party, attributed to the independent candidacy of Evan McMullan as well as concerns with Trump's personal traits.
+```{r religion}
+religion <- read.csv('./U.S. Religion Census Religious Congregations and Membership Study, 2010 (County File).csv', stringsAsFactors = F)
+df <- merge(df, religion[,c('FIPS','EVANRATE','LDSRATE')], by.x='fips', by.y = 'FIPS') %>%
+  rename(pct.evangelical = EVANRATE) %>%
+  rename(pct.lds = LDSRATE)
+df$pct.evangelical <- df$pct.evangelical/10
+df$pct.lds <- df$pct.lds/10
+df$pct.lds[is.na(df$pct.lds)] <- 0
+```
+
+#### Urban/Rural Populations
+There was extensive discussion of the strong support Trump received in rural areas, especially among white voters. Many analysts noted higher turnout in many rural areas relative to urban areas, and compared with previous election years. This data allows us to test the perceived urban/rural population split. For this analysis, only people living in "urban areas" - defined by the U.S. Census Bureau as areas of 50,000 or more people - are considered in the urban portion.
+```{r rural}
+rural <- read.csv('./DEC_10_SF1_P2/DEC_10_SF1_P2.csv', stringsAsFactors = F)
+rural$pct.rural <- (rural$D001-rural$D003)*100/rural$D001
+df <- merge(df, rural[,c('GEO.id2','pct.rural')], by.x = 'fips', by.y = 'GEO.id2')
+```
+
+#### American Nations
+![*Image sourced from http://emerald.tufts.edu/alumni/magazine/fall2013/features/up-in-arms.html which also includes a breif summary of each region.*](http://emerald.tufts.edu/alumni/magazine/fall2013/images/features/upinarms-map-large.jpg)
+
+The American Nations framework assembled by Colin Woodward[^**] are 11 regions [^1] in the United States defined by distinct dominant social and cultural traits. These traits are attributed to the Europeans or their american descendants who initially colonized an area. Each of these nations would have different voting patterns from each other due to their social and cultural differences. These patterns would also be clearly different from national demographic patterns.
+
+[^**]: For this data, please contact the author directly at colin@colinwoodard.com
+
+[^1]: In addition to the 11 regions defined, Woodward also includes the "Federal Entity", which solely including Washington, D.C., and the "Spanish Caribbean" which is not one of the *american* nations but still encompasses southern Florida.
+
+```{r nations}
+nations <- read.csv("./County_AmericanNationsCode  rev1.csv", stringsAsFactors = F)
+df <- merge(df, nations[,c('FIPS','AN_TITLE')], by.x = 'fips', by.y = 'FIPS')
+df <- rename(df, american.nation = AN_TITLE)
+df$american.nation <- as.factor(df$american.nation)
+```
+
+#### Linear Models
+From the available data, I constructed linear models with the dependent variables of Trump and Clinton's proportions of the vote and independent variables identified above. The "complex" version of the model also included the interactions between these variables. For example, this model attempts to capture the differences in voting behavior of white voters based on education level. The American Nations regions were then added to the simple and complex models test the validity of these groupings.
+```{r models}
+model.lm.simple <- lm(trump + clinton ~ pct.cvap.white + pct.cvap.black + pct.tot.nocollege + pct.tot.bachplus + pct.rural + pct.american + pct.evangelical + pct.lds, data = df, weights = tot.cvap)
+model.lm.complex <- lm(trump + clinton ~ pct.cvap.white * pct.cvap.black + pct.cvap.white * (pct.tot.nocollege + pct.tot.bachplus) + pct.rural + pct.evangelical * (pct.american + pct.lds), data = df, weights = tot.cvap)
+model.lm.simple.nations <- update(model.lm.simple, .~. + american.nation)
+model.lm.complex.nations <- update(model.lm.complex, .~. + american.nation)
+```
+
+## Results
+The following table shows the R^2^ and Adjusted R^2^ as well as Akaike information criterion (AIC) and Baysian information criterion (BIC) for the different models. A value closer to 1 for the R^2^ and Adjusted R^2^ indicate a better fit model. Comparing AIC and BIC values, the smaller value indicates a better fit. All models have p values <2.2x10^-16^, this is the lowest value reported in R, so all models are extremely statistically significant.
+
+```{r results presentation, echo=FALSE}
+models <- list(model.lm.simple, model.lm.complex, model.lm.simple.nations, model.lm.complex.nations)
+tableframe <- data.frame(model=c("Simple Demographic Model", "Complex Demographic Model", "Simple Demographic & American Nations Model", "Complex Demographic & American Nations Model"),
+                         r.sqr = sapply(models, function(x){summary(x)$r.squared}),
+                         adj.r.sqr = sapply(models, function(x){summary(x)$adj.r.squared}),
+                         AIC = sapply(models, AIC),
+                         BIC = sapply(models, BIC),
+                         stringsAsFactors = F)
+tableframe <- tableframe %>% rename("Model Name" = model) %>%
+  rename("R^2^" = r.sqr) %>%
+  rename("Adjusted R^2^" = adj.r.sqr)
+kable(tableframe, format = "markdown", digits = 3)
+
+am.na <- data.frame(nation=levels(df$american.nation), adj.r.sqr=NA)
+for (n in am.na$nation){
+  df2 <- df
+  levels(df2$american.nation) <- c(levels(df2$american.nation), "other")
+  df2$american.nation[df2$american.nation != n] <- "other"
+  am.na$adj.r.sqr[am.na$nation == n] <- summary(lm(trump + clinton ~ pct.rural * american.nation, data=df2, weights = tot.cvap))$adj.r.squared
+}
+```
+
+We can further test the relevance of Woodward's framework by removing the demographic variables for a formula of `trump + clinton ~ american.nation` and then conducting a linear regression using the same method as the other models. This yields an Adjusted R^2^ of `r round(summary(lm(trump + clinton ~ american.nation, data=df, weights = tot.cvap))$adj.r.squared, 3)`. In addition, if we simplify further to just comparing one region against the rest of the country all together, a comparison of two groups at a time instead of all 13 at once, we still obtain Adjusted R^2^ values between `r round(max(am.na$adj.r.sqr),3)` and `r round(min(am.na$adj.r.sqr),3)` with all being statistically significant.[^2]
+
+These results indicate (1) there is a strong relationship between demographic factors and  election outcomes and (2) the American Nations framework considerably explains geographic differences, beyond a demographic explanation. Considering the American Nations variable along with the demographic variables improved the model better than accounting for interactions between demographic variables. The most robust model constructed can account for almost 83% of the variability in how one county voted compared to any another.
+
+[^2]: The maximum was for the "`r am.na$nation[which.max(am.na$adj.r.sqr)]`"" and the minimum for the "`r am.na$nation[which.min(am.na$adj.r.sqr)]`".
+
+#### Additional Results
+
+Colin Woodward has asserted that the perceived urban/rural divide in american electoral politics is in fact due to differences in the American Nations.[^3] The formula of `trump + clinton ~ pct.rural` has an Adjusted R^2^ of just `r round(summary(lm(trump + clinton ~ pct.rural, data=df, weights = tot.cvap))$adj.r.squared, 3)`. If we expand to test a narrative of rural *and* white driving the election outcome with a formula of `trump + clinton ~ pct.rural * pct.cvap.white`, we still only have an Adjusted R^2^ of `r round(summary(lm(trump + clinton ~ pct.rural * pct.cvap.white, data=df, weights = tot.cvap))$adj.r.squared, 3)`. Though statistically significant, these are far weaker correlations than the single American Nation variable. Another method of testing is removing the urban/rural variable from the most robust models already constructed and comparing the descriptive statistics.
+
+[^3]:https://medium.com/s/balkanized-america/no-the-divide-in-american-politics-is-not-rural-vs-urban-and-heres-the-data-to-prove-it-c6cc8611f623
+```{r lessrural, echo=FALSE}
+model.lm.simple.nations.lessrural <- update(model.lm.simple.nations, .~.-pct.rural)
+model.lm.complex.nations.lessrural <- update(model.lm.complex.nations, .~.-pct.rural)
+tableframe <- rbind(tableframe, list("Simple Demographic & American Nations Model less urban/rural",
+                                     summary(model.lm.simple.nations.lessrural)$r.squared,
+                                     summary(model.lm.simple.nations.lessrural)$adj.r.squared,
+                                     AIC(model.lm.simple.nations.lessrural),
+                                     BIC(model.lm.simple.nations.lessrural)),
+                     list("Complex Demographic & American Nations Model less urban/rural",
+                          summary(model.lm.complex.nations.lessrural)$r.squared,
+                          summary(model.lm.complex.nations.lessrural)$adj.r.squared,
+                          AIC(model.lm.complex.nations.lessrural),
+                          BIC(model.lm.complex.nations.lessrural)))
+tableframe.r <- tableframe[grepl('rural',tableframe$`Model Name`),]
+row.names(tableframe.r) <- NULL
+kable(tableframe.r, format = "markdown", digits = 3, row.names = NA)
+```
+The nearly identical numbers for the descriptive statistics shows that removing the rural population variable has a minimal effect, though an ANOVA test indicates the differences are statistically significant.[^4]
+
+All together, this would strongly support Woodward's assertion that the argument that Trump's success in the 2016 election was due to rural voters is inaccurate, or at best, incomplete.
+
+[^4]: p = 4.07x10^-6^ and p = 0.00824 respectively for the simple and complex models
+
+
